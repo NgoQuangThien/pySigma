@@ -20,7 +20,9 @@ class QueryPostprocessingTransformation(Transformation):
     )
 
     @abstractmethod
-    def apply(self, rule: SigmaRule, query: Any) -> Any:
+    def apply(
+        self, pipeline: "sigma.processing.pipeline.ProcessingPipeline", rule: SigmaRule, query: Any
+    ) -> Any:
         """Applies post-processing transformation to arbitrary typed query.
 
         :param pipeline: Processing pipeline this transformation was contained.
@@ -32,7 +34,7 @@ class QueryPostprocessingTransformation(Transformation):
         :return: Transformed query.
         :rtype: Any
         """
-        super().apply(rule)  # tracking of applied rules
+        super().apply(pipeline, rule)  # tracking of applied rules
 
 
 @dataclass
@@ -46,8 +48,10 @@ class EmbedQueryTransformation(QueryPostprocessingTransformation):
         self.prefix = self.prefix or ""
         self.suffix = self.suffix or ""
 
-    def apply(self, rule: SigmaRule, query: str) -> str:
-        super().apply(rule, query)
+    def apply(
+        self, pipeline: "sigma.processing.pipeline.ProcessingPipeline", rule: SigmaRule, query: str
+    ) -> str:
+        super().apply(pipeline, rule, query)
         return self.prefix + query + self.suffix
 
 
@@ -66,11 +70,13 @@ class QuerySimpleTemplateTransformation(QueryPostprocessingTransformation):
 
     template: str
 
-    def apply(self, rule: SigmaRule, query: str) -> str:
+    def apply(
+        self, pipeline: "sigma.processing.pipeline.ProcessingPipeline", rule: SigmaRule, query: str
+    ) -> str:
         return self.template.format(
             query=query,
             rule=rule,
-            pipeline=self._pipeline,
+            pipeline=pipeline,
         )
 
 
@@ -89,8 +95,10 @@ class QueryTemplateTransformation(QueryPostprocessingTransformation, TemplateBas
     controls the Jinja2 HTML/XML auto-escaping.
     """
 
-    def apply(self, rule: SigmaRule, query: str) -> str:
-        return self.j2template.render(query=query, rule=rule, pipeline=self._pipeline)
+    def apply(
+        self, pipeline: "sigma.processing.pipeline.ProcessingPipeline", rule: SigmaRule, query: str
+    ) -> str:
+        return self.j2template.render(query=query, rule=rule, pipeline=pipeline)
 
 
 @dataclass
@@ -115,8 +123,10 @@ class EmbedQueryInJSONTransformation(QueryPostprocessingTransformation):
     def __post_init__(self):
         self.parsed_json = json.loads(self.json_template)
 
-    def apply(self, rule: SigmaRule, query: str):
-        super().apply(rule, query)
+    def apply(
+        self, pipeline: "sigma.processing.pipeline.ProcessingPipeline", rule: SigmaRule, query: str
+    ):
+        super().apply(pipeline, rule, query)
         return json.dumps(self._replace_placeholder(self.parsed_json, query))
 
 
@@ -130,8 +140,10 @@ class ReplaceQueryTransformation(QueryPostprocessingTransformation):
     def __post_init__(self):
         self.re = re.compile(self.pattern)
 
-    def apply(self, rule: SigmaRule, query: str):
-        super().apply(rule, query)
+    def apply(
+        self, pipeline: "sigma.processing.pipeline.ProcessingPipeline", rule: SigmaRule, query: str
+    ):
+        super().apply(pipeline, rule, query)
         return self.re.sub(self.replacement, query)
 
 
@@ -165,10 +177,12 @@ class NestedQueryPostprocessingTransformation(QueryPostprocessingTransformation)
                 "Nested post-processing transformation requires an 'items' key."
             )
 
-    def apply(self, rule: SigmaRule, query: Any) -> Any:
-        super().apply(rule, query)
+    def apply(
+        self, pipeline: "sigma.processing.pipeline.ProcessingPipeline", rule: SigmaRule, query: Any
+    ) -> Any:
+        super().apply(pipeline, rule, query)
         query = self._nested_pipeline.postprocess_query(rule, query)
-        self._pipeline.applied_ids.update(self._nested_pipeline.applied_ids)
+        pipeline.applied_ids.update(self._nested_pipeline.applied_ids)
         return query
 
 

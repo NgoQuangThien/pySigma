@@ -583,12 +583,6 @@ class SigmaString(SigmaType):
             )
         )
 
-    def upper(self) -> "SigmaString":
-        return self.map_parts(str.upper, lambda x: isinstance(x, str))
-
-    def lower(self) -> "SigmaString":
-        return self.map_parts(str.lower, lambda x: isinstance(x, str))
-
 
 class SigmaCasedString(SigmaString):
     """Case-sensitive string matching."""
@@ -803,16 +797,15 @@ class SigmaCIDRExpression(NoPlainConversionMixin, SigmaType):
         return patterns
 
 
-class CompareOperators(Enum):
-    LT = auto()  # <
-    LTE = auto()  # <=
-    GT = auto()  # >
-    GTE = auto()  # >=
-
-
 @dataclass
 class SigmaCompareExpression(NoPlainConversionMixin, SigmaType):
     """Type for numeric comparison."""
+
+    class CompareOperators(Enum):
+        LT = auto()  # <
+        LTE = auto()  # <=
+        GT = auto()  # >
+        GTE = auto()  # >=
 
     number: SigmaNumber
     op: CompareOperators
@@ -828,8 +821,6 @@ class SigmaFieldReference(NoPlainConversionMixin, SigmaType):
     """Type for referencing to other fields for comparison between them."""
 
     field: str
-    starts_with: bool = False
-    ends_with: bool = False
 
 
 @dataclass

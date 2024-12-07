@@ -15,7 +15,6 @@ from typing import (
 from collections.abc import Sequence as SequenceABC
 from base64 import b64encode
 from sigma.types import (
-    CompareOperators,
     Placeholder,
     SigmaBool,
     SigmaCasedString,
@@ -118,8 +117,8 @@ class SigmaContainsModifier(SigmaValueModifier):
     """Puts wildcards around a string to match it somewhere inside another string instead of as a whole."""
 
     def modify(
-        self, val: Union[SigmaString, SigmaRegularExpression, SigmaFieldReference]
-    ) -> Union[SigmaString, SigmaRegularExpression, SigmaFieldReference]:
+        self, val: Union[SigmaString, SigmaRegularExpression]
+    ) -> Union[SigmaString, SigmaRegularExpression]:
         if isinstance(val, SigmaString):
             if not val.startswith(SpecialChars.WILDCARD_MULTI):
                 val = SpecialChars.WILDCARD_MULTI + val
@@ -131,9 +130,6 @@ class SigmaContainsModifier(SigmaValueModifier):
             if val.regexp[-2:] != ".*" and val.regexp[-1] != "$":
                 val.regexp = val.regexp + ".*"
             val.compile()
-        elif isinstance(val, SigmaFieldReference):
-            val.starts_with = True
-            val.ends_with = True
         return val
 
 
@@ -141,8 +137,8 @@ class SigmaStartswithModifier(SigmaValueModifier):
     """Puts a wildcard at the end of a string to match arbitrary values after the given prefix."""
 
     def modify(
-        self, val: Union[SigmaString, SigmaRegularExpression, SigmaFieldReference]
-    ) -> Union[SigmaString, SigmaRegularExpression, SigmaFieldReference]:
+        self, val: Union[SigmaString, SigmaRegularExpression]
+    ) -> Union[SigmaString, SigmaRegularExpression]:
         if isinstance(val, SigmaString):
             if not val.endswith(SpecialChars.WILDCARD_MULTI):
                 val += SpecialChars.WILDCARD_MULTI
@@ -150,8 +146,6 @@ class SigmaStartswithModifier(SigmaValueModifier):
             if val.regexp[-2:] != ".*" and val.regexp[-1] != "$":
                 val.regexp = val.regexp + ".*"
             val.compile()
-        elif isinstance(val, SigmaFieldReference):
-            val.starts_with = True
         return val
 
 
@@ -159,8 +153,8 @@ class SigmaEndswithModifier(SigmaValueModifier):
     """Puts a wildcard before a string to match arbitrary values before it."""
 
     def modify(
-        self, val: Union[SigmaString, SigmaRegularExpression, SigmaFieldReference]
-    ) -> Union[SigmaString, SigmaRegularExpression, SigmaFieldReference]:
+        self, val: Union[SigmaString, SigmaRegularExpression]
+    ) -> Union[SigmaString, SigmaRegularExpression]:
         if isinstance(val, SigmaString):
             if not val.startswith(SpecialChars.WILDCARD_MULTI):
                 val = SpecialChars.WILDCARD_MULTI + val
@@ -168,8 +162,6 @@ class SigmaEndswithModifier(SigmaValueModifier):
             if val.regexp[:2] != ".*" and val.regexp[0] != "^":
                 val.regexp = ".*" + val.regexp
             val.compile()
-        elif isinstance(val, SigmaFieldReference):
-            val.ends_with = True
         return val
 
 
@@ -329,7 +321,7 @@ class SigmaAllModifier(SigmaListModifier):
 class SigmaCompareModifier(SigmaValueModifier):
     """Base class for numeric comparison operator modifiers."""
 
-    op: ClassVar[CompareOperators]
+    op: ClassVar[SigmaCompareExpression.CompareOperators]
 
     def modify(self, val: SigmaNumber) -> SigmaCompareExpression:
         return SigmaCompareExpression(val, self.op, self.source)
@@ -338,25 +330,33 @@ class SigmaCompareModifier(SigmaValueModifier):
 class SigmaLessThanModifier(SigmaCompareModifier):
     """Numeric less than (<) matching."""
 
-    op: ClassVar[CompareOperators] = CompareOperators.LT
+    op: ClassVar[SigmaCompareExpression.CompareOperators] = (
+        SigmaCompareExpression.CompareOperators.LT
+    )
 
 
 class SigmaLessThanEqualModifier(SigmaCompareModifier):
     """Numeric less than or equal (<=) matching."""
 
-    op: ClassVar[CompareOperators] = CompareOperators.LTE
+    op: ClassVar[SigmaCompareExpression.CompareOperators] = (
+        SigmaCompareExpression.CompareOperators.LTE
+    )
 
 
 class SigmaGreaterThanModifier(SigmaCompareModifier):
     """Numeric greater than (>) matching."""
 
-    op: ClassVar[CompareOperators] = CompareOperators.GT
+    op: ClassVar[SigmaCompareExpression.CompareOperators] = (
+        SigmaCompareExpression.CompareOperators.GT
+    )
 
 
 class SigmaGreaterThanEqualModifier(SigmaCompareModifier):
     """Numeric greater than or equal (>=) matching."""
 
-    op: ClassVar[CompareOperators] = CompareOperators.GTE
+    op: ClassVar[SigmaCompareExpression.CompareOperators] = (
+        SigmaCompareExpression.CompareOperators.GTE
+    )
 
 
 class SigmaFieldReferenceModifier(SigmaValueModifier):

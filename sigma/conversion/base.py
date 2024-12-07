@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from collections import ChainMap, defaultdict
-from contextlib import contextmanager
 import re
 
 from sigma.correlations import (
@@ -38,7 +37,6 @@ from sigma.conditions import (
     ConditionType,
 )
 from sigma.types import (
-    CompareOperators,
     SigmaBool,
     SigmaCasedString,
     SigmaExists,
@@ -140,9 +138,6 @@ class Backend(ABC):
 
     # not exists: convert as "not exists-expression" or as dedicated expression
     explicit_not_exists_expression: ClassVar[bool] = False
-
-    # use not_eq_token, not_eq_expression, etc. to implement != as a separate expression instead of not_token in ConditionNOT
-    convert_not_as_not_eq: ClassVar[bool] = False
 
     def __init__(
         self,
@@ -750,14 +745,8 @@ class TextQueryBackend(Backend):
     eq_token: ClassVar[Optional[str]] = (
         None  # Token inserted between field and value (without separator)
     )
-    not_eq_token: ClassVar[Optional[str]] = (
-        None  # Token inserted between field and value (without separator) if using not_eq_expression over not_token
-    )
     eq_expression: ClassVar[str] = (
         "{field}{backend.eq_token}{value}"  # Expression for field = value
-    )
-    not_eq_expression: ClassVar[str] = (
-        "{field}{backend.not_eq_token}{value}"  # Expression for field != value
     )
 
     # Query structure
@@ -823,15 +812,12 @@ class TextQueryBackend(Backend):
         }
     )
 
-    # String matching operators. if none is appropriate eq_token (or not_eq_token) is used.
+    # String matching operators. if none is appropriate eq_token is used.
     startswith_expression: ClassVar[Optional[str]] = None
-    not_startswith_expression: ClassVar[Optional[str]] = None
     startswith_expression_allow_special: ClassVar[bool] = False
     endswith_expression: ClassVar[Optional[str]] = None
-    not_endswith_expression: ClassVar[Optional[str]] = None
     endswith_expression_allow_special: ClassVar[bool] = False
     contains_expression: ClassVar[Optional[str]] = None
-    not_contains_expression: ClassVar[Optional[str]] = None
     contains_expression_allow_special: ClassVar[bool] = False
     wildcard_match_expression: ClassVar[Optional[str]] = (
         None  # Special expression if wildcards can't be matched with the eq_token operator.
@@ -842,7 +828,6 @@ class TextQueryBackend(Backend):
     # is one of the flags shortcuts supported by Sigma (currently i, m and s) and refers to the
     # token stored in the class variable re_flags.
     re_expression: ClassVar[Optional[str]] = None
-    not_re_expression: ClassVar[Optional[str]] = None
     re_escape_char: ClassVar[Optional[str]] = (
         None  # Character used for escaping in regular expressions
     )
@@ -864,13 +849,10 @@ class TextQueryBackend(Backend):
     # Case sensitive string matching operators similar to standard string matching. If not provided,
     # case_sensitive_match_expression is used.
     case_sensitive_startswith_expression: ClassVar[Optional[str]] = None
-    case_sensitive_not_startswith_expression: ClassVar[Optional[str]] = None
     case_sensitive_startswith_expression_allow_special: ClassVar[bool] = False
     case_sensitive_endswith_expression: ClassVar[Optional[str]] = None
-    case_sensitive_not_endswith_expression: ClassVar[Optional[str]] = None
     case_sensitive_endswith_expression_allow_special: ClassVar[bool] = False
     case_sensitive_contains_expression: ClassVar[Optional[str]] = None
-    case_sensitive_not_contains_expression: ClassVar[Optional[str]] = None
     case_sensitive_contains_expression_allow_special: ClassVar[bool] = False
 
     # CIDR expressions: define CIDR matching if backend has native support. Else pySigma expands
@@ -878,23 +860,19 @@ class TextQueryBackend(Backend):
     cidr_expression: ClassVar[Optional[str]] = (
         None  # CIDR expression query as format string with placeholders {field}, {value} (the whole CIDR value), {network} (network part only), {prefixlen} (length of network mask prefix) and {netmask} (CIDR network mask only)
     )
-    not_cidr_expression: ClassVar[Optional[str]] = None
 
     # Numeric comparison operators
     compare_op_expression: ClassVar[Optional[str]] = (
         None  # Compare operation query as format string with placeholders {field}, {operator} and {value}
     )
-    compare_operators: ClassVar[Optional[Dict[CompareOperators, str]]] = (
+    compare_operators: ClassVar[Optional[Dict[SigmaCompareExpression.CompareOperators, str]]] = (
         None  # Mapping between CompareOperators elements and strings used as replacement for {operator} in compare_op_expression
     )
 
     # Expression for comparing two event fields
-    # Field comparison expression with the placeholders {field1} and {field2} corresponding to left field and right value side of Sigma detection item
-    field_equals_field_expression: ClassVar[Optional[str]] = None
-    field_equals_field_startswith_expression: ClassVar[Optional[str]] = None
-    field_equals_field_endswith_expression: ClassVar[Optional[str]] = None
-    field_equals_field_contains_expression: ClassVar[Optional[str]] = None
-
+    field_equals_field_expression: ClassVar[Optional[str]] = (
+        None  # Field comparison expression with the placeholders {field1} and {field2} corresponding to left field and right value side of Sigma detection item
+    )
     field_equals_field_escaping_quoting: Tuple[bool, bool] = (
         True,
         True,
@@ -1109,58 +1087,6 @@ class TextQueryBackend(Backend):
         c.explicit_not_exists_expression = c.field_not_exists_expression is not None
         return c
 
-    @contextmanager
-    def not_equals_context_manager(self, use_negated_expressions: bool = False):
-        """Context manager to temporarily swap expressions with their negated versions."""
-        if not use_negated_expressions:
-            yield
-            return
-
-        # Store original expressions
-        original_expressions = {
-            "eq_expression": self.eq_expression,
-            "re_expression": self.re_expression,
-            "cidr_expression": self.cidr_expression,
-            "startswith_expression": self.startswith_expression,
-            "case_sensitive_startswith_expression": self.case_sensitive_startswith_expression,
-            "endswith_expression": self.endswith_expression,
-            "case_sensitive_endswith_expression": self.case_sensitive_endswith_expression,
-            "contains_expression": self.contains_expression,
-            "case_sensitive_contains_expression": self.case_sensitive_contains_expression,
-        }
-
-        # Swap to negated versions
-        try:
-            self.eq_expression = self.not_eq_expression
-            self.re_expression = self.not_re_expression
-            self.cidr_expression = self.not_cidr_expression
-            self.startswith_expression = self.not_startswith_expression
-            self.case_sensitive_startswith_expression = (
-                self.case_sensitive_not_startswith_expression
-            )
-            self.endswith_expression = self.not_endswith_expression
-            self.case_sensitive_endswith_expression = self.case_sensitive_not_endswith_expression
-            self.contains_expression = self.not_contains_expression
-            self.case_sensitive_contains_expression = self.case_sensitive_not_contains_expression
-            yield
-        finally:
-            # Restore original expressions
-            self.eq_expression = original_expressions["eq_expression"]
-            self.re_expression = original_expressions["re_expression"]
-            self.cidr_expression = original_expressions["cidr_expression"]
-            self.startswith_expression = original_expressions["startswith_expression"]
-            self.case_sensitive_startswith_expression = original_expressions[
-                "case_sensitive_startswith_expression"
-            ]
-            self.endswith_expression = original_expressions["endswith_expression"]
-            self.case_sensitive_endswith_expression = original_expressions[
-                "case_sensitive_endswith_expression"
-            ]
-            self.contains_expression = original_expressions["contains_expression"]
-            self.case_sensitive_contains_expression = original_expressions[
-                "case_sensitive_contains_expression"
-            ]
-
     def compare_precedence(self, outer: ConditionItem, inner: ConditionItem) -> bool:
         """
         Compare precedence of outer and inner condition items. Return True if precedence of
@@ -1283,11 +1209,9 @@ class TextQueryBackend(Backend):
         arg = cond.args[0]
         try:
             if arg.__class__ in self.precedence:  # group if AND or OR condition is negated
-                converted_group = self.convert_condition_group(arg, state)
-                if self.convert_not_as_not_eq:
-                    return converted_group
-                else:
-                    return self.not_token + self.token_separator + converted_group
+                return (
+                    self.not_token + self.token_separator + self.convert_condition_group(arg, state)
+                )
             else:
                 expr = self.convert_condition(arg, state)
                 if isinstance(
@@ -1295,10 +1219,7 @@ class TextQueryBackend(Backend):
                 ):  # negate deferred expression and pass it to parent
                     return expr.negate()
                 else:  # convert negated expression to string
-                    if self.convert_not_as_not_eq:
-                        return expr
-                    else:
-                        return self.not_token + self.token_separator + expr
+                    return self.not_token + self.token_separator + expr
         except TypeError:  # pragma: no cover
             raise NotImplementedError("Operator 'not' not supported by the backend")
 
@@ -1391,27 +1312,6 @@ class TextQueryBackend(Backend):
             return self.quote_string(converted)
         else:
             return converted
-
-    def convert_condition_field_eq_val(
-        self, cond: ConditionFieldEqualsValueExpression, state: ConversionState
-    ) -> Union[str, DeferredQueryExpression]:
-        """Uses context manager with parent class method to swap expressions with their negated versions
-        if convert_not_as_not_eq is set and the parent of the condition is a ConditionNOT."""
-
-        # Determine if negation is needed
-
-        def is_parent_not(cond):
-            if cond.parent is None:
-                return False
-            if isinstance(cond.parent, ConditionNOT):
-                return True
-            return is_parent_not(cond.parent)
-
-        negation = is_parent_not(cond) and self.convert_not_as_not_eq
-
-        # Use context manager to handle negation
-        with self.not_equals_context_manager(use_negated_expressions=negation):
-            return super().convert_condition_field_eq_val(cond, state)
 
     def convert_condition_field_eq_val_str(
         self, cond: ConditionFieldEqualsValueExpression, state: ConversionState
@@ -1653,47 +1553,16 @@ class TextQueryBackend(Backend):
         )
 
     def convert_condition_field_eq_field(
-        self, cond: ConditionFieldEqualsValueExpression, state: ConversionState
+        self, cond: SigmaFieldReference, state: ConversionState
     ) -> Union[str, DeferredQueryExpression]:
         """Conversion of comparision of two fields."""
         field1, field2 = self.convert_condition_field_eq_field_escape_and_quote(
             cond.field, cond.value.field
         )
-        value = cond.value
-        if value.starts_with and value.ends_with:
-            if self.field_equals_field_contains_expression is None:
-                raise NotImplementedError(
-                    "Field reference contains expression is not supported by backend."
-                )
-            return self.field_equals_field_contains_expression.format(
-                field1=field1,
-                field2=field2,
-            )
-        elif value.starts_with:
-            if self.field_equals_field_startswith_expression is None:
-                raise NotImplementedError(
-                    "Field reference startswith expression is not supported by backend."
-                )
-            return self.field_equals_field_startswith_expression.format(
-                field1=field1,
-                field2=field2,
-            )
-        elif value.ends_with:
-            if self.field_equals_field_endswith_expression is None:
-                raise NotImplementedError(
-                    "Field reference endswith expression is not supported by backend."
-                )
-            return self.field_equals_field_endswith_expression.format(
-                field1=field1,
-                field2=field2,
-            )
-        else:
-            if self.field_equals_field_expression is None:
-                raise NotImplementedError("Field reference expression is not supported by backend.")
-            return self.field_equals_field_expression.format(
-                field1=field1,
-                field2=field2,
-            )
+        return self.field_equals_field_expression.format(
+            field1=field1,
+            field2=field2,
+        )
 
     def convert_condition_field_eq_val_null(
         self, cond: ConditionFieldEqualsValueExpression, state: ConversionState
